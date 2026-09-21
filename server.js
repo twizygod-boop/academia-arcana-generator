@@ -14,8 +14,6 @@ const BASE_URL = (process.env.BASE_URL || "").replace(/\/$/, "");
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_SHOP_DOMAIN;
 const SHOPIFY_CLIENT_ID = process.env.SHOPIFY_CLIENT_ID;
 
-// Le même secret Shopify sert à l'authentification API
-// et à la vérification HMAC des webhooks.
 const SHOPIFY_CLIENT_SECRET =
   process.env.SHOPIFY_CLIENT_SECRET ||
   process.env.SHOPIFY_WEBHOOK_SECRET;
@@ -27,43 +25,60 @@ const SHOPIFY_WEBHOOK_SECRET =
 const DOWNLOAD_TOKEN_SECRET =
   process.env.DOWNLOAD_TOKEN_SECRET || "change-me";
 
+const ARCANA_TEST_SECRET =
+  process.env.ARCANA_TEST_SECRET;
+
 const SHOPIFY_API_VERSION = "2026-07";
 
 const WEBHOOK_URL =
   `${BASE_URL}/webhooks/orders-paid`;
 
-const STORAGE_DIR = path.join(process.cwd(), "storage");
+const STORAGE_DIR =
+  path.join(process.cwd(), "storage");
 
 if (!fs.existsSync(STORAGE_DIR)) {
-  fs.mkdirSync(STORAGE_DIR, { recursive: true });
+  fs.mkdirSync(STORAGE_DIR, {
+    recursive: true
+  });
 }
 
 const processedWebhookIds = new Set();
+
+/* =========================================================
+   MAISONS
+========================================================= */
 
 const HOUSES = {
   IGNIS: {
     emoji: "🔥",
     element: "Feu",
     animal: "Phénix",
-    description: "Courage, passion et ambition."
+    description:
+      "Courage, passion et ambition."
   },
+
   NOCTIS: {
     emoji: "🌙",
     element: "Ombre",
     animal: "Corbeau",
-    description: "Intuition, mystère et stratégie."
+    description:
+      "Intuition, mystère et stratégie."
   },
+
   SYLVA: {
     emoji: "🌿",
     element: "Nature",
     animal: "Cerf",
-    description: "Harmonie, patience et sagesse."
+    description:
+      "Harmonie, patience et sagesse."
   },
+
   AETHER: {
     emoji: "⚡",
     element: "Aether",
     animal: "Faucon",
-    description: "Curiosité, créativité et découverte."
+    description:
+      "Curiosité, créativité et découverte."
   }
 };
 
@@ -78,11 +93,16 @@ function clean(value) {
 function normalizeHouse(value) {
   const house = clean(value).toUpperCase();
 
-  return HOUSES[house] ? house : "AETHER";
+  return HOUSES[house]
+    ? house
+    : "AETHER";
 }
 
 function getLineProperty(lineItem, name) {
-  const properties = lineItem?.properties || lineItem?.custom_attributes || [];
+  const properties =
+    lineItem?.properties ||
+    lineItem?.custom_attributes ||
+    [];
 
   const property = properties.find(
     (item) =>
@@ -93,15 +113,26 @@ function getLineProperty(lineItem, name) {
   return property?.value ?? "";
 }
 
+/* =========================================================
+   TÉLÉCHARGEMENT SÉCURISÉ
+========================================================= */
+
 function createDownloadToken(orderId) {
   return crypto
-    .createHmac("sha256", DOWNLOAD_TOKEN_SECRET)
+    .createHmac(
+      "sha256",
+      DOWNLOAD_TOKEN_SECRET
+    )
     .update(String(orderId))
     .digest("hex");
 }
 
-function verifyDownloadToken(orderId, token) {
-  const expected = createDownloadToken(orderId);
+function verifyDownloadToken(
+  orderId,
+  token
+) {
+  const expected =
+    createDownloadToken(orderId);
 
   try {
     return crypto.timingSafeEqual(
@@ -113,15 +144,29 @@ function verifyDownloadToken(orderId, token) {
   }
 }
 
-function verifyShopifyHmac(rawBody, hmacHeader) {
-  if (!hmacHeader || !SHOPIFY_WEBHOOK_SECRET) {
+/* =========================================================
+   HMAC SHOPIFY
+========================================================= */
+
+function verifyShopifyHmac(
+  rawBody,
+  hmacHeader
+) {
+  if (
+    !hmacHeader ||
+    !SHOPIFY_WEBHOOK_SECRET
+  ) {
     return false;
   }
 
-  const digest = crypto
-    .createHmac("sha256", SHOPIFY_WEBHOOK_SECRET)
-    .update(rawBody)
-    .digest("base64");
+  const digest =
+    crypto
+      .createHmac(
+        "sha256",
+        SHOPIFY_WEBHOOK_SECRET
+      )
+      .update(rawBody)
+      .digest("base64");
 
   try {
     return crypto.timingSafeEqual(
@@ -134,20 +179,27 @@ function verifyShopifyHmac(rawBody, hmacHeader) {
 }
 
 /* =========================================================
-   SHOPIFY AUTHENTICATION
+   SHOPIFY
 ========================================================= */
 
 function getShopifyDomain() {
   if (!SHOPIFY_SHOP_DOMAIN) {
-    throw new Error("SHOPIFY_SHOP_DOMAIN manquant.");
+    throw new Error(
+      "SHOPIFY_SHOP_DOMAIN manquant."
+    );
   }
 
-  let domain = SHOPIFY_SHOP_DOMAIN
-    .trim()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/$/, "");
+  let domain =
+    SHOPIFY_SHOP_DOMAIN
+      .trim()
+      .replace(/^https?:\/\//, "")
+      .replace(/\/$/, "");
 
-  if (!domain.endsWith(".myshopify.com")) {
+  if (
+    !domain.endsWith(
+      ".myshopify.com"
+    )
+  ) {
     domain += ".myshopify.com";
   }
 
@@ -160,13 +212,17 @@ let cachedTokenExpiresAt = 0;
 async function getShopifyAccessToken() {
   if (
     cachedAccessToken &&
-    Date.now() < cachedTokenExpiresAt - 5 * 60 * 1000
+    Date.now() <
+      cachedTokenExpiresAt -
+        5 * 60 * 1000
   ) {
     return cachedAccessToken;
   }
 
   if (!SHOPIFY_CLIENT_ID) {
-    throw new Error("SHOPIFY_CLIENT_ID manquant.");
+    throw new Error(
+      "SHOPIFY_CLIENT_ID manquant."
+    );
   }
 
   if (!SHOPIFY_CLIENT_SECRET) {
@@ -175,56 +231,91 @@ async function getShopifyAccessToken() {
     );
   }
 
-  const shop = getShopifyDomain();
+  const shop =
+    getShopifyDomain();
+
+  console.log(
+    "🔐 Demande de token Shopify..."
+  );
 
   const response = await fetch(
     `https://${shop}/admin/oauth/access_token`,
     {
       method: "POST",
+
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
+        "Content-Type":
+          "application/x-www-form-urlencoded"
       },
+
       body: new URLSearchParams({
-        grant_type: "client_credentials",
-        client_id: SHOPIFY_CLIENT_ID,
-        client_secret: SHOPIFY_CLIENT_SECRET
+        grant_type:
+          "client_credentials",
+
+        client_id:
+          SHOPIFY_CLIENT_ID,
+
+        client_secret:
+          SHOPIFY_CLIENT_SECRET
       })
     }
   );
 
-  const data = await response.json();
+  const data =
+    await response.json();
 
-  if (!response.ok || !data.access_token) {
+  if (
+    !response.ok ||
+    !data.access_token
+  ) {
     throw new Error(
-      `Shopify token error: ${JSON.stringify(data)}`
+      `Shopify token error: ${JSON.stringify(
+        data
+      )}`
     );
   }
 
-  cachedAccessToken = data.access_token;
+  cachedAccessToken =
+    data.access_token;
 
   const expiresIn =
-    Number(data.expires_in) || 86399;
+    Number(data.expires_in) ||
+    86399;
 
   cachedTokenExpiresAt =
-    Date.now() + expiresIn * 1000;
+    Date.now() +
+    expiresIn * 1000;
 
-  console.log("✅ Token Shopify obtenu.");
+  console.log(
+    "✅ Token Shopify obtenu."
+  );
 
   return cachedAccessToken;
 }
 
-async function shopifyGraphQL(query, variables = {}) {
-  const token = await getShopifyAccessToken();
-  const shop = getShopifyDomain();
+async function shopifyGraphQL(
+  query,
+  variables = {}
+) {
+  const token =
+    await getShopifyAccessToken();
+
+  const shop =
+    getShopifyDomain();
 
   const response = await fetch(
     `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
     {
       method: "POST",
+
       headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": token
+        "Content-Type":
+          "application/json",
+
+        "X-Shopify-Access-Token":
+          token
       },
+
       body: JSON.stringify({
         query,
         variables
@@ -232,17 +323,22 @@ async function shopifyGraphQL(query, variables = {}) {
     }
   );
 
-  const data = await response.json();
+  const data =
+    await response.json();
 
   if (!response.ok) {
     throw new Error(
-      `Shopify GraphQL HTTP error: ${JSON.stringify(data)}`
+      `Shopify GraphQL HTTP error: ${JSON.stringify(
+        data
+      )}`
     );
   }
 
   if (data.errors?.length) {
     throw new Error(
-      `Shopify GraphQL error: ${JSON.stringify(data.errors)}`
+      `Shopify GraphQL error: ${JSON.stringify(
+        data.errors
+      )}`
     );
   }
 
@@ -250,18 +346,25 @@ async function shopifyGraphQL(query, variables = {}) {
 }
 
 /* =========================================================
-   WEBHOOK SHOPIFY
+   WEBHOOK ORDERS/PAID
 ========================================================= */
 
 async function ensureOrdersPaidWebhook() {
-  console.log("🔎 Vérification du webhook orders/paid...");
+  console.log(
+    "🔎 Vérification du webhook orders/paid..."
+  );
+
+  /*
+   * On récupère les abonnements puis
+   * on filtre en JavaScript.
+   *
+   * Cela évite de dépendre du filtre
+   * topics du champ GraphQL.
+   */
 
   const query = `
     query {
-      webhookSubscriptions(
-        first: 50,
-        topics: [ORDERS_PAID]
-      ) {
+      webhookSubscriptions(first: 50) {
         edges {
           node {
             id
@@ -273,17 +376,23 @@ async function ensureOrdersPaidWebhook() {
     }
   `;
 
-  const data = await shopifyGraphQL(query);
+  const data =
+    await shopifyGraphQL(query);
 
   const subscriptions =
-    data?.webhookSubscriptions?.edges?.map(
-      (edge) => edge.node
-    ) || [];
+    data?.webhookSubscriptions?.edges
+      ?.map(
+        (edge) => edge.node
+      ) || [];
 
-  const existing = subscriptions.find(
-    (subscription) =>
-      subscription.uri === WEBHOOK_URL
-  );
+  const existing =
+    subscriptions.find(
+      (subscription) =>
+        subscription.topic ===
+          "ORDERS_PAID" &&
+        subscription.uri ===
+          WEBHOOK_URL
+    );
 
   if (existing) {
     console.log(
@@ -311,6 +420,7 @@ async function ensureOrdersPaidWebhook() {
           topic
           uri
         }
+
         userErrors {
           field
           message
@@ -319,33 +429,37 @@ async function ensureOrdersPaidWebhook() {
     }
   `;
 
-  const dataCreated = await shopifyGraphQL(
-    mutation,
-    {
-      topic: "ORDERS_PAID",
-      webhookSubscription: {
-        uri: WEBHOOK_URL
-      }
-    }
-  );
-
   const result =
-    dataCreated?.webhookSubscriptionCreate;
+    await shopifyGraphQL(
+      mutation,
+      {
+        topic: "ORDERS_PAID",
 
-  if (result?.userErrors?.length) {
+        webhookSubscription: {
+          uri: WEBHOOK_URL
+        }
+      }
+    );
+
+  const created =
+    result?.webhookSubscriptionCreate;
+
+  if (
+    created?.userErrors?.length
+  ) {
     throw new Error(
       `Erreur création webhook : ${JSON.stringify(
-        result.userErrors
+        created.userErrors
       )}`
     );
   }
 
   console.log(
     "✅ Webhook orders/paid créé :",
-    result?.webhookSubscription
+    created?.webhookSubscription
   );
 
-  return result?.webhookSubscription;
+  return created?.webhookSubscription;
 }
 
 /* =========================================================
@@ -359,47 +473,38 @@ function createPdf({
   lastName,
   house
 }) {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({
-      size: "A4",
-      margin: 60
-    });
-
-    const stream =
-      fs.createWriteStream(outputPath);
-
-    stream.on("finish", resolve);
-    stream.on("error", reject);
-
-    doc.pipe(stream);
-
-    const houseData = HOUSES[house];
-
-    doc.fontSize(28)
-      .text("ACADEMIA ARCANA", {
-        align: "center"
-      });
-
-    doc.moveDown();
-
-    doc.fontSize(16)
-      .text("École des Arts Mystiques", {
-        align: "center"
-      });
-
-    doc.moveDown(3);
-
-    if (type === "letter") {
-      doc.fontSize(24)
-        .text("LETTRE D'ADMISSION", {
-          align: "center"
+  return new Promise(
+    (resolve, reject) => {
+      const doc =
+        new PDFDocument({
+          size: "A4",
+          margin: 60
         });
 
-      doc.moveDown(2);
+      const stream =
+        fs.createWriteStream(
+          outputPath
+        );
 
-      doc.fontSize(16)
+      stream.on(
+        "finish",
+        resolve
+      );
+
+      stream.on(
+        "error",
+        reject
+      );
+
+      doc.pipe(stream);
+
+      const houseData =
+        HOUSES[house];
+
+      doc
+        .fontSize(28)
         .text(
-          `Cher ${firstName} ${lastName},`,
+          "ACADEMIA ARCANA",
           {
             align: "center"
           }
@@ -407,8 +512,44 @@ function createPdf({
 
       doc.moveDown();
 
-      doc.fontSize(13).text(
-        `Nous avons le plaisir de vous annoncer que votre candidature a été acceptée au sein de l'Academia Arcana.
+      doc
+        .fontSize(16)
+        .text(
+          "École des Arts Mystiques",
+          {
+            align: "center"
+          }
+        );
+
+      doc.moveDown(3);
+
+      if (type === "letter") {
+        doc
+          .fontSize(24)
+          .text(
+            "LETTRE D'ADMISSION",
+            {
+              align: "center"
+            }
+          );
+
+        doc.moveDown(2);
+
+        doc
+          .fontSize(16)
+          .text(
+            `Cher ${firstName} ${lastName},`,
+            {
+              align: "center"
+            }
+          );
+
+        doc.moveDown();
+
+        doc
+          .fontSize(13)
+          .text(
+            `Nous avons le plaisir de vous annoncer que votre candidature a été acceptée au sein de l'Academia Arcana.
 
 Votre maison est : ${house}
 
@@ -419,302 +560,214 @@ Animal : ${houseData.animal}
 ${houseData.description}
 
 Votre aventure magique commence aujourd'hui.`
-      );
-    }
+          );
+      }
 
-    else if (type === "certificate") {
-      doc.fontSize(24)
-        .text("CERTIFICAT D'APPARTENANCE", {
-          align: "center"
-        });
+      else if (
+        type === "certificate"
+      ) {
+        doc
+          .fontSize(24)
+          .text(
+            "CERTIFICAT D'APPARTENANCE",
+            {
+              align: "center"
+            }
+          );
 
-      doc.moveDown(3);
+        doc.moveDown(3);
 
-      doc.fontSize(18)
+        doc
+          .fontSize(18)
+          .text(
+            `${firstName} ${lastName}`,
+            {
+              align: "center"
+            }
+          );
+
+        doc.moveDown();
+
+        doc
+          .fontSize(16)
+          .text(
+            `Maison ${house}`,
+            {
+              align: "center"
+            }
+          );
+
+        doc.moveDown();
+
+        doc
+          .fontSize(13)
+          .text(
+            `${houseData.emoji} ${houseData.description}`,
+            {
+              align: "center"
+            }
+          );
+      }
+
+      else if (
+        type === "profile"
+      ) {
+        doc
+          .fontSize(24)
+          .text(
+            "PROFIL ARCANA",
+            {
+              align: "center"
+            }
+          );
+
+        doc.moveDown(2);
+
+        doc
+          .fontSize(15)
+          .text(
+            `Prénom : ${firstName}`
+          );
+
+        doc.text(
+          `Nom : ${lastName}`
+        );
+
+        doc.text(
+          `Maison : ${house}`
+        );
+
+        doc.text(
+          `Élément : ${houseData.element}`
+        );
+
+        doc.text(
+          `Animal : ${houseData.animal}`
+        );
+
+        doc.moveDown();
+
+        doc
+          .fontSize(13)
+          .text(
+            houseData.description
+          );
+      }
+
+      else {
+        doc
+          .fontSize(24)
+          .text(
+            "PASSEPORT ARCANA",
+            {
+              align: "center"
+            }
+          );
+
+        doc.moveDown(2);
+
+        doc
+          .fontSize(16)
+          .text(
+            `${firstName} ${lastName}`,
+            {
+              align: "center"
+            }
+          );
+
+        doc.moveDown();
+
+        doc
+          .fontSize(15)
+          .text(
+            `Maison : ${house}`,
+            {
+              align: "center"
+            }
+          );
+
+        doc.moveDown();
+
+        doc
+          .fontSize(13)
+          .text(
+            `${houseData.emoji} ${houseData.element} • ${houseData.animal}`,
+            {
+              align: "center"
+            }
+          );
+      }
+
+      doc.moveDown(5);
+
+      doc
+        .fontSize(10)
         .text(
-          `${firstName} ${lastName}`,
+          "Academia Arcana — Document numérique personnalisé",
           {
             align: "center"
           }
         );
 
-      doc.moveDown();
-
-      doc.fontSize(16)
-        .text(
-          `Maison ${house}`,
-          {
-            align: "center"
-          }
-        );
-
-      doc.moveDown();
-
-      doc.fontSize(13)
-        .text(
-          `${houseData.emoji} ${houseData.description}`,
-          {
-            align: "center"
-          }
-        );
+      doc.end();
     }
-
-    else if (type === "profile") {
-      doc.fontSize(24)
-        .text("PROFIL ARCANA", {
-          align: "center"
-        });
-
-      doc.moveDown(2);
-
-      doc.fontSize(15)
-        .text(`Prénom : ${firstName}`);
-
-      doc.text(`Nom : ${lastName}`);
-
-      doc.text(`Maison : ${house}`);
-
-      doc.text(`Élément : ${houseData.element}`);
-
-      doc.text(`Animal : ${houseData.animal}`);
-
-      doc.moveDown();
-
-      doc.fontSize(13)
-        .text(houseData.description);
-    }
-
-    else {
-      doc.fontSize(24)
-        .text("PASSEPORT ARCANA", {
-          align: "center"
-        });
-
-      doc.moveDown(2);
-
-      doc.fontSize(16)
-        .text(`${firstName} ${lastName}`, {
-          align: "center"
-        });
-
-      doc.moveDown();
-
-      doc.fontSize(15)
-        .text(`Maison : ${house}`, {
-          align: "center"
-        });
-
-      doc.moveDown();
-
-      doc.fontSize(13)
-        .text(
-          `${houseData.emoji} ${houseData.element} • ${houseData.animal}`,
-          {
-            align: "center"
-          }
-        );
-    }
-
-    doc.moveDown(5);
-
-    doc.fontSize(10)
-      .text(
-        "Academia Arcana — Document numérique personnalisé",
-        {
-          align: "center"
-        }
-      );
-
-    doc.end();
-  });
-}
-
-/* =========================================================
-   TRAITEMENT COMMANDE
-========================================================= */
-
-async function processOrder(order) {
-  const orderId = order.id;
-
-  console.log(
-    `📦 Traitement de la commande ${orderId}`
   );
-
-  const lineItems = order.line_items || [];
-
-  const personalizedItems =
-    lineItems.filter((item) => {
-      const personalized =
-        getLineProperty(
-          item,
-          "_arcana_personalized"
-        );
-
-      return String(personalized).toLowerCase() === "true";
-    });
-
-  if (!personalizedItems.length) {
-    console.log(
-      `ℹ️ Commande ${orderId} sans produit personnalisé.`
-    );
-
-    return;
-  }
-
-  const firstItem =
-    personalizedItems[0];
-
-  const firstName =
-    clean(
-      getLineProperty(firstItem, "Prénom")
-    ) ||
-    clean(order.customer?.first_name) ||
-    clean(order.billing_address?.first_name) ||
-    "Apprenti";
-
-  const lastName =
-    clean(
-      getLineProperty(firstItem, "Nom")
-    ) ||
-    clean(order.customer?.last_name) ||
-    clean(order.billing_address?.last_name) ||
-    "Arcana";
-
-  const house =
-    normalizeHouse(
-      getLineProperty(firstItem, "Maison")
-    );
-
-  const orderDir =
-    path.join(
-      STORAGE_DIR,
-      String(orderId)
-    );
-
-  fs.mkdirSync(orderDir, {
-    recursive: true
-  });
-
-  const generatedFiles = [];
-
-  for (const item of personalizedItems) {
-    const title =
-      clean(item.title).toLowerCase();
-
-    let type = "passport";
-
-    if (title.includes("lettre")) {
-      type = "letter";
-    }
-
-    if (
-      title.includes("certificat")
-    ) {
-      type = "certificate";
-    }
-
-    if (
-      title.includes("profil")
-    ) {
-      type = "profile";
-    }
-
-    const safeType =
-      type === "letter"
-        ? "lettre-admission"
-        : type === "certificate"
-        ? "certificat"
-        : type === "profile"
-        ? "profil-arcana"
-        : "passeport-arcana";
-
-    const pdfPath =
-      path.join(
-        orderDir,
-        `${safeType}.pdf`
-      );
-
-    await createPdf({
-      outputPath: pdfPath,
-      type,
-      firstName,
-      lastName,
-      house
-    });
-
-    generatedFiles.push(pdfPath);
-  }
-
-  const zipPath =
-    path.join(
-      STORAGE_DIR,
-      `academia-arcana-${orderId}.zip`
-    );
-
-  await createZip(
-    generatedFiles,
-    zipPath
-  );
-
-  const token =
-    createDownloadToken(orderId);
-
-  const downloadUrl =
-    `${BASE_URL}/download/${encodeURIComponent(
-      orderId
-    )}/${token}`;
-
-  console.log(
-    `✅ ZIP généré pour ${firstName} ${lastName}`
-  );
-
-  console.log(
-    `🔗 ${downloadUrl}`
-  );
-
-  await sendEmailIfConfigured({
-    order,
-    firstName,
-    lastName,
-    house,
-    downloadUrl
-  });
 }
 
 /* =========================================================
    ZIP
 ========================================================= */
 
-function createZip(files, outputPath) {
-  return new Promise((resolve, reject) => {
-    const output =
-      fs.createWriteStream(outputPath);
+function createZip(
+  files,
+  outputPath
+) {
+  return new Promise(
+    (resolve, reject) => {
+      const output =
+        fs.createWriteStream(
+          outputPath
+        );
 
-    const archive =
-      archiver("zip", {
-        zlib: {
-          level: 9
-        }
-      });
+      const archive =
+        archiver("zip", {
+          zlib: {
+            level: 9
+          }
+        });
 
-    output.on("close", resolve);
-    output.on("error", reject);
-
-    archive.on("error", reject);
-
-    archive.pipe(output);
-
-    for (const file of files) {
-      archive.file(
-        file,
-        {
-          name: path.basename(file)
-        }
+      output.on(
+        "close",
+        resolve
       );
-    }
 
-    archive.finalize();
-  });
+      output.on(
+        "error",
+        reject
+      );
+
+      archive.on(
+        "error",
+        reject
+      );
+
+      archive.pipe(output);
+
+      for (
+        const file of files
+      ) {
+        archive.file(
+          file,
+          {
+            name:
+              path.basename(file)
+          }
+        );
+      }
+
+      archive.finalize();
+    }
+  );
 }
 
 /* =========================================================
@@ -742,18 +795,25 @@ async function sendEmailIfConfigured({
 
   const transporter =
     nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
+      host:
+        process.env.SMTP_HOST,
+
       port:
         Number(
-          process.env.SMTP_PORT || 587
+          process.env.SMTP_PORT ||
+            587
         ),
+
       secure:
         String(
           process.env.SMTP_SECURE
-        ).toLowerCase() === "true",
+        ).toLowerCase() ===
+        "true",
+
       auth: {
         user:
           process.env.SMTP_USER,
+
         pass:
           process.env.SMTP_PASS
       }
@@ -775,9 +835,12 @@ async function sendEmailIfConfigured({
     from:
       process.env.MAIL_FROM ||
       process.env.SMTP_USER,
+
     to: email,
+
     subject:
       "✨ Votre aventure Academia Arcana commence",
+
     text:
       `Bonjour ${firstName} ${lastName},
 
@@ -790,6 +853,7 @@ Téléchargez vos documents personnalisés ici :
 ${downloadUrl}
 
 À bientôt à l'Academia Arcana ✨`,
+
     html: `
       <h2>✨ Academia Arcana</h2>
 
@@ -823,18 +887,264 @@ ${downloadUrl}
 }
 
 /* =========================================================
-   ROUTES
+   TRAITEMENT D'UNE COMMANDE
 ========================================================= */
 
-// Page d'accueil
-app.get("/", (req, res) => {
-  res.status(200).send(`
-    <!DOCTYPE html>
-    <html lang="fr">
+async function processOrder(
+  order
+) {
+  const orderId =
+    order.id;
+
+  console.log(
+    `📦 Traitement de la commande ${orderId}`
+  );
+
+  const lineItems =
+    order.line_items || [];
+
+  const personalizedItems =
+    lineItems.filter(
+      (item) => {
+        const personalized =
+          getLineProperty(
+            item,
+            "_arcana_personalized"
+          );
+
+        return (
+          String(
+            personalized
+          ).toLowerCase() ===
+          "true"
+        );
+      }
+    );
+
+  if (
+    !personalizedItems.length
+  ) {
+    console.log(
+      `ℹ️ Commande ${orderId} sans produit personnalisé.`
+    );
+
+    return;
+  }
+
+  const firstItem =
+    personalizedItems[0];
+
+  const firstName =
+    clean(
+      getLineProperty(
+        firstItem,
+        "Prénom"
+      )
+    ) ||
+    clean(
+      order.customer?.first_name
+    ) ||
+    clean(
+      order.billing_address
+        ?.first_name
+    ) ||
+    "Apprenti";
+
+  const lastName =
+    clean(
+      getLineProperty(
+        firstItem,
+        "Nom"
+      )
+    ) ||
+    clean(
+      order.customer?.last_name
+    ) ||
+    clean(
+      order.billing_address
+        ?.last_name
+    ) ||
+    "Arcana";
+
+  const house =
+    normalizeHouse(
+      getLineProperty(
+        firstItem,
+        "Maison"
+      )
+    );
+
+  console.log(
+    `👤 ${firstName} ${lastName}`
+  );
+
+  console.log(
+    `🏛️ Maison : ${house}`
+  );
+
+  const orderDir =
+    path.join(
+      STORAGE_DIR,
+      String(orderId)
+    );
+
+  fs.mkdirSync(
+    orderDir,
+    {
+      recursive: true
+    }
+  );
+
+  const generatedFiles =
+    [];
+
+  for (
+    const item of personalizedItems
+  ) {
+    const title =
+      clean(
+        item.title
+      ).toLowerCase();
+
+    let type =
+      "passport";
+
+    if (
+      title.includes(
+        "lettre"
+      )
+    ) {
+      type =
+        "letter";
+    }
+
+    if (
+      title.includes(
+        "certificat"
+      )
+    ) {
+      type =
+        "certificate";
+    }
+
+    if (
+      title.includes(
+        "profil"
+      )
+    ) {
+      type =
+        "profile";
+    }
+
+    const safeType =
+      type === "letter"
+        ? "lettre-admission"
+        : type === "certificate"
+        ? "certificat"
+        : type === "profile"
+        ? "profil-arcana"
+        : "passeport-arcana";
+
+    const pdfPath =
+      path.join(
+        orderDir,
+        `${safeType}.pdf`
+      );
+
+    console.log(
+      `📄 Génération : ${safeType}.pdf`
+    );
+
+    await createPdf({
+      outputPath:
+        pdfPath,
+
+      type,
+
+      firstName,
+
+      lastName,
+
+      house
+    });
+
+    generatedFiles.push(
+      pdfPath
+    );
+  }
+
+  const zipPath =
+    path.join(
+      STORAGE_DIR,
+      `academia-arcana-${orderId}.zip`
+    );
+
+  console.log(
+    "📦 Création du ZIP..."
+  );
+
+  await createZip(
+    generatedFiles,
+    zipPath
+  );
+
+  const token =
+    createDownloadToken(
+      orderId
+    );
+
+  const downloadUrl =
+    `${BASE_URL}/download/${encodeURIComponent(
+      orderId
+    )}/${token}`;
+
+  console.log(
+    `✅ ZIP généré pour ${firstName} ${lastName}`
+  );
+
+  console.log(
+    `🔗 ${downloadUrl}`
+  );
+
+  await sendEmailIfConfigured({
+    order,
+    firstName,
+    lastName,
+    house,
+    downloadUrl
+  });
+
+  return {
+    orderId,
+    firstName,
+    lastName,
+    house,
+    downloadUrl
+  };
+}
+
+/* =========================================================
+   PAGE D'ACCUEIL
+========================================================= */
+
+app.get(
+  "/",
+  (req, res) => {
+    res.status(200).send(`
+      <!DOCTYPE html>
+      <html lang="fr">
       <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>Academia Arcana Generator</title>
+
+        <meta
+          name="viewport"
+          content="width=device-width,initial-scale=1"
+        >
+
+        <title>
+          Academia Arcana Generator
+        </title>
+
         <style>
           body {
             margin: 0;
@@ -873,38 +1183,53 @@ app.get("/", (req, res) => {
 
       <body>
         <div class="box">
-          <h1>✦ Academia Arcana</h1>
-          <p>Générateur de documents personnalisés</p>
+          <h1>
+            ✦ Academia Arcana
+          </h1>
+
+          <p>
+            Générateur de documents personnalisés
+          </p>
 
           <div class="status">
             ✓ Service opérationnel
           </div>
         </div>
       </body>
-    </html>
-  `);
-});
+      </html>
+    `);
+  }
+);
 
-// Health check
-app.get("/health", (req, res) => {
-  res.json({
-    ok: true,
-    service: "academia-arcana-generator"
-  });
-});
+/* =========================================================
+   HEALTH
+========================================================= */
 
-/*
- * IMPORTANT :
- * Le webhook utilise express.raw()
- * pour vérifier le HMAC sur le corps brut.
- */
+app.get(
+  "/health",
+  (req, res) => {
+    res.json({
+      ok: true,
+      service:
+        "academia-arcana-generator"
+    });
+  }
+);
+
+/* =========================================================
+   WEBHOOK SHOPIFY ORDERS/PAID
+========================================================= */
+
 app.post(
   "/webhooks/orders-paid",
+
   express.raw({
     type: "application/json"
   }),
+
   async (req, res) => {
-    const rawBody = req.body;
+    const rawBody =
+      req.body;
 
     const hmac =
       req.get(
@@ -933,7 +1258,9 @@ app.post(
 
     if (
       webhookId &&
-      processedWebhookIds.has(webhookId)
+      processedWebhookIds.has(
+        webhookId
+      )
     ) {
       console.log(
         `ℹ️ Webhook déjà traité : ${webhookId}`
@@ -941,7 +1268,9 @@ app.post(
 
       return res
         .status(200)
-        .send("Already processed");
+        .send(
+          "Already processed"
+        );
     }
 
     if (webhookId) {
@@ -955,7 +1284,9 @@ app.post(
     try {
       order =
         JSON.parse(
-          rawBody.toString("utf8")
+          rawBody.toString(
+            "utf8"
+          )
         );
     } catch (error) {
       console.error(
@@ -965,32 +1296,175 @@ app.post(
 
       return res
         .status(400)
-        .send("Invalid JSON");
+        .send(
+          "Invalid JSON"
+        );
     }
+
+    console.log(
+      "📨 Webhook Shopify orders/paid reçu."
+    );
 
     /*
      * Shopify attend une réponse rapide.
-     * On accuse réception puis on génère
-     * le fichier en arrière-plan.
+     * On répond immédiatement puis on
+     * traite la commande en arrière-plan.
      */
+
     res
       .status(200)
       .send("OK");
 
-    processOrder(order).catch(
-      (error) => {
-        console.error(
-          "❌ Erreur traitement commande :",
-          error
-        );
-      }
-    );
+    processOrder(order)
+      .catch(
+        (error) => {
+          console.error(
+            "❌ Erreur traitement commande :",
+            error
+          );
+        }
+      );
   }
 );
 
-// Download sécurisé
+/* =========================================================
+   TEST INTERNE SÉCURISÉ
+========================================================= */
+
+app.post(
+  "/test/generate",
+
+  express.json(),
+
+  async (req, res) => {
+    const providedSecret =
+      req.get(
+        "X-Arcana-Test-Secret"
+      );
+
+    /*
+     * Si la variable n'existe pas
+     * ou si la clé est incorrecte,
+     * on répond volontairement 404.
+     */
+
+    if (
+      !ARCANA_TEST_SECRET ||
+      !providedSecret ||
+      providedSecret !==
+        ARCANA_TEST_SECRET
+    ) {
+      return res
+        .status(404)
+        .send("Not found");
+    }
+
+    const testOrder = {
+      id:
+        `TEST-ARCANA-${Date.now()}`,
+
+      email: "",
+
+      customer: {
+        first_name:
+          "Mathis",
+
+        last_name:
+          "BRISARD"
+      },
+
+      line_items: [
+        {
+          title:
+            "Lettre d’admission – Academia Arcana",
+
+          quantity: 1,
+
+          properties: [
+            {
+              name:
+                "_arcana_personalized",
+
+              value:
+                "true"
+            },
+
+            {
+              name:
+                "Prénom",
+
+              value:
+                "Mathis"
+            },
+
+            {
+              name:
+                "Nom",
+
+              value:
+                "BRISARD"
+            },
+
+            {
+              name:
+                "Maison",
+
+              value:
+                "IGNIS"
+            }
+          ]
+        }
+      ]
+    };
+
+    console.log(
+      "🧪 Test interne de génération lancé."
+    );
+
+    try {
+      const result =
+        await processOrder(
+          testOrder
+        );
+
+      console.log(
+        "✅ Test interne terminé."
+      );
+
+      return res.json({
+        ok: true,
+
+        message:
+          "Génération de test terminée.",
+
+        ...result
+      });
+    } catch (error) {
+      console.error(
+        "❌ Erreur test interne :",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          ok: false,
+
+          error:
+            error?.message ||
+            String(error)
+        });
+    }
+  }
+);
+
+/* =========================================================
+   DOWNLOAD SÉCURISÉ
+========================================================= */
+
 app.get(
   "/download/:order/:token",
+
   (req, res) => {
     const {
       order,
@@ -1005,7 +1479,9 @@ app.get(
     ) {
       return res
         .status(403)
-        .send("Lien invalide.");
+        .send(
+          "Lien invalide."
+        );
     }
 
     const zipPath =
@@ -1014,7 +1490,11 @@ app.get(
         `academia-arcana-${order}.zip`
       );
 
-    if (!fs.existsSync(zipPath)) {
+    if (
+      !fs.existsSync(
+        zipPath
+      )
+    ) {
       return res
         .status(404)
         .send(
@@ -1030,21 +1510,40 @@ app.get(
 );
 
 /* =========================================================
-   START
+   DÉMARRAGE
 ========================================================= */
 
-app.listen(PORT, () => {
-  console.log(`Academia Arcana generator listening on :${PORT}`);
+app.listen(
+  PORT,
+  () => {
+    console.log(
+      `Academia Arcana generator listening on :${PORT}`
+    );
 
-  setTimeout(async () => {
-    console.log("🔎 Vérification du webhook orders/paid...");
+    setTimeout(
+      async () => {
+        console.log(
+          "🔎 Vérification du webhook orders/paid..."
+        );
 
-    try {
-      await ensureOrdersPaidWebhook();
-      console.log("✅ Vérification Shopify terminée.");
-    } catch (error) {
-      console.error("❌ Erreur configuration Shopify :");
-      console.error(error?.message || error);
-    }
-  }, 1500);
-});
+        try {
+          await ensureOrdersPaidWebhook();
+
+          console.log(
+            "✅ Vérification Shopify terminée."
+          );
+        } catch (error) {
+          console.error(
+            "❌ Erreur configuration Shopify :"
+          );
+
+          console.error(
+            error?.message ||
+              error
+          );
+        }
+      },
+      1500
+    );
+  }
+);
