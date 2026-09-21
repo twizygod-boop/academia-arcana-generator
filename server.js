@@ -1033,24 +1033,18 @@ app.get(
    START
 ========================================================= */
 
-app.listen(PORT, async () => {
-  console.log(
-    `Academia Arcana generator listening on :${PORT}`
-  );
+app.listen(PORT, () => {
+  console.log(`Academia Arcana generator listening on :${PORT}`);
 
-  /*
-   * Configure automatiquement orders/paid
-   * après le démarrage.
-   */
-  try {
-    await ensureOrdersPaidWebhook();
-  } catch (error) {
-    console.error(
-      "⚠️ Impossible de configurer automatiquement Shopify :"
-    );
+  setTimeout(async () => {
+    console.log("🔎 Vérification du webhook orders/paid...");
 
-    console.error(
-      error.message
-    );
-  }
+    try {
+      await ensureOrdersPaidWebhook();
+      console.log("✅ Vérification Shopify terminée.");
+    } catch (error) {
+      console.error("❌ Erreur configuration Shopify :");
+      console.error(error?.message || error);
+    }
+  }, 1500);
 });
